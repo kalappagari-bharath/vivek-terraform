@@ -1,0 +1,84 @@
+parameters:
+- name: Environment
+  displayName: Environment name
+  type: string
+  default: dev
+  values:
+  - dev
+  - qa3
+  - uat
+  - stress
+  - prod-like
+  - prod
+  - prod-dr
+- name: Action
+  displayName: Action
+  type: string
+  default: plan
+  values:
+  - plan
+  - apply
+
+variables:
+  - name: Backend
+    ${{ if eq( parameters['Environment'] , 'dev') }}:
+      value: dev
+    ${{ if eq( parameters['Environment'], 'qa3') }}:
+      value: dev
+    ${{ if eq( parameters['Environment'] , 'uat') }}:
+      value: uat
+    ${{ if eq( parameters['Environment'] , 'stress') }}:
+      value: uat
+    ${{ if eq( parameters['Environment'] , 'prod-like') }}:
+      value: uat
+    ${{ if eq( parameters['Environment'] , 'prod') }}:
+      value: prod
+    ${{ if eq( parameters['Environment'] , 'prod-dr') }}:
+      value: prod
+      
+pool:
+  vmImage: ubuntu-latest
+
+trigger: none
+
+steps:
+- task: TerraformInstaller@1
+  inputs:
+    terraformVersion: 'latest'
+
+- checkout: self
+  displayName: 'Checkout repository'
+
+- task: TerraformTaskV4@4
+  displayName: 'Terraform init'
+  inputs:
+    provider: 'azurerm'
+    command: 'custom'
+    customCommand: 'init'
+    commandOptions: '-backend-config=tfvars/${{ variables.Backend }}-backend.conf'
+    environmentServiceNameAzureRM: 'TerraformBossSP'
+- task: TerraformTaskV4@4
+  displayName: 'Terraform workspace select'
+  inputs:
+    provider: 'azurerm'
+    command: 'custom'
+    environmentServiceNameAzureRM: 'TerraformBossSP'
+    customCommand: 'workspace'
+    commandOptions: 'select -or-create ${{ parameters.Environment }}'
+    outputTo: 'console'
+- task: TerraformTaskV4@4
+  displayName: 'Terraform plan' 
+  condition: eq('${{ parameters.Action }}', 'plan')
+  inputs:
+    provider: 'azurerm'
+    command: 'plan'
+    commandOptions: '-var-file=tfvars/${{ parameters.Environment }}.tfvars'
+    environmentServiceNameAzureRM: 'TerraformBossSP'
+- task: TerraformTaskV4@4
+  displayName: 'Terraform apply'
+  condition: eq('${{ parameters.Action }}', 'apply')
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    commandOptions: '-var-file="tfvars/${{ parameters.Environment }}.tfvars" -auto-approve'
+    environmentServiceNameAzureRM: 'TerraformBossSP'

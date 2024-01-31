@@ -1,0 +1,73 @@
+parameters:
+- name: Environment
+  displayName: Environment name
+  type: string
+  default: dev
+  values:
+  - dev
+  - qa3
+  - uat
+  - stress
+  - prod-like
+  - prod
+  - prod-dr
+- name: Destroy
+  displayName: Please confirm that you want to destroy the environment selected above by typing "destroy"
+  type: string
+  default:
+
+variables:
+  - name: Backend
+    ${{ if eq( parameters['Environment'] , 'dev') }}:
+      value: dev
+    ${{ if eq( parameters['Environment'], 'qa3') }}:
+      value: dev
+    ${{ if eq( parameters['Environment'] , 'uat') }}:
+      value: uat
+    ${{ if eq( parameters['Environment'] , 'stress') }}:
+      value: uat
+    ${{ if eq( parameters['Environment'] , 'prod-like') }}:
+      value: uat
+    ${{ if eq( parameters['Environment'] , 'prod') }}:
+      value: prod
+    ${{ if eq( parameters['Environment'] , 'prod-dr') }}:
+      value: prod
+
+pool:
+  vmImage: ubuntu-latest
+
+trigger: none
+
+steps:
+- task: TerraformInstaller@1
+  inputs:
+    terraformVersion: 'latest'
+
+- checkout: self
+  displayName: 'Checkout repository'
+
+- task: TerraformTaskV4@4
+  displayName: 'Terraform init'
+  inputs:
+    provider: 'azurerm'
+    command: 'custom'
+    customCommand: 'init'
+    commandOptions: '-backend-config=tfvars/${{ variables.Backend }}-backend.conf'
+    environmentServiceNameAzureRM: 'TerraformBossSP'
+- task: TerraformTaskV4@4
+  displayName: 'Terraform workspace select'
+  inputs:
+    provider: 'azurerm'
+    command: 'custom'
+    environmentServiceNameAzureRM: 'TerraformBossSP'
+    customCommand: 'workspace'
+    commandOptions: 'select -or-create ${{ parameters.Environment }}'
+    outputTo: 'console'
+- task: TerraformTaskV4@4
+  displayName: 'Terraform destroy' 
+  condition: eq('${{ parameters.Destroy }}', 'destroy')
+  inputs:
+    provider: 'azurerm'
+    command: 'destroy'
+    commandOptions: '-var-file="tfvars/${{ parameters.Environment }}.tfvars" -auto-approve'
+    environmentServiceNameAzureRM: 'TerraformBossSP'
